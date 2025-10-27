@@ -128,9 +128,8 @@ class KTAdaptor(nn.Module):
         self.knowledge_token = nn.Parameter(torch.rand(in_dims))
         self.n_tasks = n_tasks
 
-        max_task = 10   # should be higher than tasks
-        pe = torch.zeros(max_task, in_dims)
-        position = torch.arange(0, max_task, dtype=torch.float).unsqueeze(1)
+        pe = torch.zeros(n_tasks, in_dims)
+        position = torch.arange(0, n_tasks, dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, 1, 2).float() * (-math.log(10000.0) / in_dims))
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
@@ -160,9 +159,12 @@ class KTAdaptor(nn.Module):
         return self.mlp(tokens).mean(dim=1), torch.tensor(0).to(tokens.device)
 
     def forward_inference(self, token, control_vec):
-        # token.shape = [b, 1, 1024]
-        # control_vec = [False, False, True, ..., False]
-        #                -> "True" remains the selected task
+        '''
+        token.shape = [b, 1, 1024]
+        control_vec = [False, False, True, ..., False]
+                       -> "True" remains the selected task
+        '''
+
         b_size = token.shape[0]
         facial_token = repeat(self.knowledge_token, 'd -> b c d', b=b_size, c=1).contiguous()
 
