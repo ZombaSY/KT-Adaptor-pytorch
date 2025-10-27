@@ -1,40 +1,37 @@
-input_size=[224, 224]   # (height, width)
-crop_size=224
+input_size = [224, 224]  # (height, width)
+crop_size = 224
 
-conf=dict(
+conf = dict(
     env=dict(
         debug=False,
-        CUDA_VISIBLE_DEVICES='0',
-        mode='train',
+        CUDA_VISIBLE_DEVICES="0",
+        mode="train",
         cuda=True,
         wandb=True,
-        saved_model_directory='model_ckpt',
-        project_name='facial-token',
-        task='classification',
+        saved_model_directory="model_ckpt",
+        project_name="facial-token",
+        task="classification",
         train_fold=1,
         epoch=10000,
         early_stop_epoch=300,
     ),
-
     model=dict(
-        name='ConvNextv2_face_recognition',
+        name="ConvNextv2_face_recognition",
         num_class=500,
         input_size=input_size,
         inference_mode=False,
-        saved_ckpt='',
+        saved_ckpt="",
     ),
-
     dataloader_train=dict(
-        name='Image2Vector',
-        mode='train',
-        data_path='/path/to/cfp-dataset/train.csv',
-        label_cols=['label'], # for multiple classification
+        name="Image2Vector",
+        mode="train",
+        data_path="/path/to/cfp-dataset/train.csv",
+        label_cols=["label"],  # for multiple classification
         data_cache=True,
         weighted_sampler=False,
         batch_size=32,
         input_size=input_size,
         workers=8,
-
         augmentations=dict(
             transform_blur=0.3,
             transform_clahe=0.1,
@@ -54,34 +51,27 @@ conf=dict(
             transform_resize=input_size,
             transform_rain=0.05,
             transform_rotate=0.3,
-        )
+        ),
     ),
     dataloader_valid=dict(
-        name='Image2Vector',
-        mode='valid',
-        data_path='/path/to/cfp-dataset/valid.csv',
-        label_cols=['label'],
+        name="Image2Vector",
+        mode="valid",
+        data_path="/path/to/cfp-dataset/valid.csv",
+        label_cols=["label"],
         data_cache=True,
         weighted_sampler=False,
         batch_size=32,
         input_size=input_size,
         workers=8,
     ),
-
     criterion=dict(
-        name='CrossEntropyLoss',
+        name="CrossEntropyLoss",
     ),
-
     optimizer=dict(
-        name='AdamW',
+        name="AdamW",
         lr=1e-4,
         lr_min=1e-6,
         weight_decay=5e-3,
     ),
-
-    scheduler=dict(
-        name='WarmupCosine',
-        cycles=50,
-        warmup_epoch=20
-    ),
+    scheduler=dict(name="WarmupCosine", cycles=50, warmup_epoch=20),
 )

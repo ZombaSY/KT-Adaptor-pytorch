@@ -1,12 +1,12 @@
+import math
+
+import cv2 as cv
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
-import cv2 as cv
-import math
-
-from scipy.ndimage.morphology import distance_transform_edt as edt
 from scipy.ndimage import convolve
+from scipy.ndimage.morphology import distance_transform_edt as edt
 
 
 class CrossEntropyLoss(nn.Module):
@@ -24,10 +24,11 @@ class FocalLoss(nn.Module):
     """
     Multi-class Focal loss implementation
     """
+
     def __init__(self, conf):
         super().__init__()
-        self.gamma = conf['gamma']
-        self.weight = conf['weight']
+        self.gamma = conf["gamma"]
+        self.weight = conf["weight"]
 
     def forward(self, y_pred, y):
         """
@@ -46,11 +47,11 @@ class FocalLoss(nn.Module):
 class KLDivergenceLoss(nn.Module):
     def __init__(self, conf):
         super().__init__()
-        self.loss = nn.KLDivLoss(reduction=conf['reduction'])
+        self.loss = nn.KLDivLoss(reduction=conf["reduction"])
         self.log_softmax = nn.LogSoftmax(dim=1)
         self.softmax = nn.Softmax(dim=1)
         self.eps = 1e-16
-        self.temperature = conf['temperature']
+        self.temperature = conf["temperature"]
 
     def forward(self, x, y, alpha=1):
         x = (1 - alpha) * y + alpha * x
@@ -81,7 +82,9 @@ class DTMSELoss(nn.Module):
 
         return field
 
-    def forward(self, pred: torch.Tensor, target: torch.Tensor, debug=False) -> torch.Tensor:
+    def forward(
+        self, pred: torch.Tensor, target: torch.Tensor, debug=False
+    ) -> torch.Tensor:
         """
         Uses one binary channel: 1 - fg, 0 - bg
         pred: (b, 1, x, y, z) or (b, 1, x, y)
@@ -92,8 +95,12 @@ class DTMSELoss(nn.Module):
             pred.dim() == target.dim()
         ), "Prediction and target need to be of same dimension"
 
-        pred_dt = torch.from_numpy(self.distance_field(pred.cpu().detach().numpy())).float()
-        target_dt = torch.from_numpy(self.distance_field(target.cpu().detach().numpy())).float()
+        pred_dt = torch.from_numpy(
+            self.distance_field(pred.cpu().detach().numpy())
+        ).float()
+        target_dt = torch.from_numpy(
+            self.distance_field(target.cpu().detach().numpy())
+        ).float()
 
         loss = self.mse(pred_dt.squeeze(), target_dt.squeeze())
 
@@ -105,7 +112,7 @@ class HausdorffDTLoss(nn.Module):
 
     def __init__(self, conf):
         super().__init__()
-        self.alpha = torch.tensor(conf['alpha'])
+        self.alpha = torch.tensor(conf["alpha"])
 
     @torch.no_grad()
     def distance_field(self, img: np.ndarray) -> np.ndarray:
@@ -137,11 +144,15 @@ class HausdorffDTLoss(nn.Module):
             pred.dim() == target.dim()
         ), "Prediction and target need to be of same dimension"
 
-        pred_dt = torch.from_numpy(self.distance_field(pred.cpu().detach().numpy())).float()
-        target_dt = torch.from_numpy(self.distance_field(target.cpu().detach().numpy())).float()
+        pred_dt = torch.from_numpy(
+            self.distance_field(pred.cpu().detach().numpy())
+        ).float()
+        target_dt = torch.from_numpy(
+            self.distance_field(target.cpu().detach().numpy())
+        ).float()
 
         pred_error = (pred - target) ** 2
-        distance = pred_dt ** self.alpha + target_dt ** self.alpha
+        distance = pred_dt**self.alpha + target_dt**self.alpha
 
         dt_field = pred_error.cpu() * distance.cpu()
         loss = dt_field.mean()
@@ -167,8 +178,8 @@ class HausdorffERLoss(nn.Module):
 
     def __init__(self, conf):
         super().__init__()
-        self.alpha = conf['alpha']
-        self.erosions = conf['erosions']
+        self.alpha = conf["alpha"]
+        self.erosions = conf["erosions"]
         self.prepare_kernels()
 
     def prepare_kernels(self):
@@ -247,7 +258,9 @@ class HausdorffERLoss(nn.Module):
 
         else:
             eroted = torch.from_numpy(
-                self.perform_erosion(pred.cpu().numpy(), target.cpu().detach().numpy(), debug)
+                self.perform_erosion(
+                    pred.cpu().numpy(), target.cpu().detach().numpy(), debug
+                )
             ).float()
 
             loss = eroted.mean()
@@ -304,11 +317,15 @@ class NMELoss(nn.Module):
             for j in range(pred_factor.shape[1]):
                 dist.append(torch.dist(pred_factor[idx, j], target_factor[idx, j]))
             if pred.shape[1] == 68:
-                norm.append(torch.dist(target[idx, 45], target[idx, 36]))   # normalization with eye lateral canthus
+                norm.append(
+                    torch.dist(target[idx, 45], target[idx, 36])
+                )  # normalization with eye lateral canthus
             elif pred.shape[1] == 98:
-                norm.append(torch.dist(target[idx, 60], target[idx, 72]))   # normalization with eye lateral canthus
+                norm.append(
+                    torch.dist(target[idx, 60], target[idx, 72])
+                )  # normalization with eye lateral canthus
             else:
-                raise ValueError('Invalid landmark number')
+                raise ValueError("Invalid landmark number")
             ne.append(dist)
         ne = torch.tensor(ne)
         norm = torch.tensor(norm)
@@ -344,12 +361,24 @@ class NME_box(nn.Module):
         pred_re = pred.view(-1, pred.shape[-1] // 2, 2)
         target_re = target.view(-1, target.shape[-1] // 2, 2)
 
-        pred_bbox = torch.stack([torch.min(pred_re[..., 0], dim=1)[0], torch.min(pred_re[..., 1], dim=1)[0],
-                                 torch.max(pred_re[..., 0], dim=1)[0], torch.max(pred_re[..., 1], dim=1)[0]],
-                                dim=-1)
-        target_bbox = torch.stack([torch.min(target_re[..., 0], dim=1)[0], torch.min(target_re[..., 1], dim=1)[0],
-                                   torch.max(target_re[..., 0], dim=1)[0], torch.max(target_re[..., 1], dim=1)[0]],
-                                  dim=-1)
+        pred_bbox = torch.stack(
+            [
+                torch.min(pred_re[..., 0], dim=1)[0],
+                torch.min(pred_re[..., 1], dim=1)[0],
+                torch.max(pred_re[..., 0], dim=1)[0],
+                torch.max(pred_re[..., 1], dim=1)[0],
+            ],
+            dim=-1,
+        )
+        target_bbox = torch.stack(
+            [
+                torch.min(target_re[..., 0], dim=1)[0],
+                torch.min(target_re[..., 1], dim=1)[0],
+                torch.max(target_re[..., 0], dim=1)[0],
+                torch.max(target_re[..., 1], dim=1)[0],
+            ],
+            dim=-1,
+        )
 
         return self.nme(pred, target, pred_bbox, target_bbox)
 
@@ -360,7 +389,7 @@ class BCELoss(nn.Module):
 
     def forward(self, x, y):
         y = y.float()
-        BCE = F.binary_cross_entropy(x, y, reduction='mean')
+        BCE = F.binary_cross_entropy(x, y, reduction="mean")
 
         return BCE
 
@@ -378,7 +407,7 @@ class DiceLoss(nn.Module):
         targets = targets.view(-1)
 
         intersection = (inputs * targets).sum()
-        dice = (2. * intersection + smooth) / (inputs.sum() + targets.sum() + smooth)
+        dice = (2.0 * intersection + smooth) / (inputs.sum() + targets.sum() + smooth)
 
         return 1 - dice
 
@@ -396,9 +425,11 @@ class DiceBCELoss(nn.Module):
         targets = targets.view(-1)
 
         intersection = (inputs * targets).sum()
-        dice_loss = 1 - (2. * intersection + smooth) / (inputs.sum() + targets.sum() + smooth)
+        dice_loss = 1 - (2.0 * intersection + smooth) / (
+            inputs.sum() + targets.sum() + smooth
+        )
         targets = targets.float()
-        BCE = F.binary_cross_entropy(inputs, targets, reduction='mean')
+        BCE = F.binary_cross_entropy(inputs, targets, reduction="mean")
         Dice_BCE = BCE + dice_loss
 
         return Dice_BCE
@@ -441,7 +472,7 @@ class FocalBCELoss(nn.Module):
 
         # first compute binary cross-entropy
         targets = targets.float()
-        bce = F.binary_cross_entropy(inputs, targets, reduction='mean')
+        bce = F.binary_cross_entropy(inputs, targets, reduction="mean")
         bce_exp = torch.exp(-bce)
         focal_loss = alpha * (1 - bce_exp) ** gamma * bce
 
@@ -474,7 +505,7 @@ class FocalDiceLoss(nn.Module):
         y = y.view(-1)
 
         intersection = (x * y).sum()
-        dice = 1 - (2. * intersection + smooth) / (x.sum() + y.sum() + smooth)
+        dice = 1 - (2.0 * intersection + smooth) / (x.sum() + y.sum() + smooth)
 
         ce_exp = torch.exp(-dice)
         focal_loss = alpha * (1 - ce_exp) ** gamma * dice
@@ -543,7 +574,7 @@ class FocalTverskyLoss(nn.Module):
 class JSDivergenceLoss(nn.Module):
     def __init__(self, conf):
         super().__init__()
-        self.kld = KLDivergenceLoss(reduction=conf['reduction'])
+        self.kld = KLDivergenceLoss(reduction=conf["reduction"])
 
     def forward(self, x, y):
         m = (x + y) / 2
@@ -598,55 +629,81 @@ class InfoNCELoss(nn.Module):
 
     def __init__(self, conf):
         super().__init__()
-        self.temperature = conf['temperature']
-        self.reduction = conf['reduction']
-        self.negative_mode = conf['negative_mode']
+        self.temperature = conf["temperature"]
+        self.reduction = conf["reduction"]
+        self.negative_mode = conf["negative_mode"]
 
     def forward(self, query, positive_key, negative_keys=None):
-        return self.info_nce(query, positive_key, negative_keys,
-                             temperature=self.temperature,
-                             reduction=self.reduction,
-                             negative_mode=self.negative_mode)
+        return self.info_nce(
+            query,
+            positive_key,
+            negative_keys,
+            temperature=self.temperature,
+            reduction=self.reduction,
+            negative_mode=self.negative_mode,
+        )
 
-    def info_nce(self, query, positive_key, negative_keys=None, temperature=0.1, reduction='mean', negative_mode='unpaired'):
+    def info_nce(
+        self,
+        query,
+        positive_key,
+        negative_keys=None,
+        temperature=0.1,
+        reduction="mean",
+        negative_mode="unpaired",
+    ):
         # Check input dimensionality.
         if query.dim() != 2:
-            raise ValueError('<query> must have 2 dimensions.')
+            raise ValueError("<query> must have 2 dimensions.")
         if positive_key.dim() != 2:
-            raise ValueError('<positive_key> must have 2 dimensions.')
+            raise ValueError("<positive_key> must have 2 dimensions.")
         if negative_keys is not None:
-            if negative_mode == 'unpaired' and negative_keys.dim() != 2:
-                raise ValueError("<negative_keys> must have 2 dimensions if <negative_mode> == 'unpaired'.")
-            if negative_mode == 'paired' and negative_keys.dim() != 3:
-                raise ValueError("<negative_keys> must have 3 dimensions if <negative_mode> == 'paired'.")
+            if negative_mode == "unpaired" and negative_keys.dim() != 2:
+                raise ValueError(
+                    "<negative_keys> must have 2 dimensions if <negative_mode> == 'unpaired'."
+                )
+            if negative_mode == "paired" and negative_keys.dim() != 3:
+                raise ValueError(
+                    "<negative_keys> must have 3 dimensions if <negative_mode> == 'paired'."
+                )
 
         # Check matching number of samples.
         if len(query) != len(positive_key):
-            raise ValueError('<query> and <positive_key> must must have the same number of samples.')
+            raise ValueError(
+                "<query> and <positive_key> must must have the same number of samples."
+            )
         if negative_keys is not None:
-            if negative_mode == 'paired' and len(query) != len(negative_keys):
-                raise ValueError("If negative_mode == 'paired', then <negative_keys> must have the same number of samples as <query>.")
+            if negative_mode == "paired" and len(query) != len(negative_keys):
+                raise ValueError(
+                    "If negative_mode == 'paired', then <negative_keys> must have the same number of samples as <query>."
+                )
 
         # Embedding vectors should have same number of components.
         if query.shape[-1] != positive_key.shape[-1]:
-            raise ValueError('Vectors of <query> and <positive_key> should have the same number of components.')
+            raise ValueError(
+                "Vectors of <query> and <positive_key> should have the same number of components."
+            )
         if negative_keys is not None:
             if query.shape[-1] != negative_keys.shape[-1]:
-                raise ValueError('Vectors of <query> and <negative_keys> should have the same number of components.')
+                raise ValueError(
+                    "Vectors of <query> and <negative_keys> should have the same number of components."
+                )
 
         # Normalize to unit vectors
-        query, positive_key, negative_keys = self.normalize(query, positive_key, negative_keys)
+        query, positive_key, negative_keys = self.normalize(
+            query, positive_key, negative_keys
+        )
         if negative_keys is not None:
             # Explicit negative keys
 
             # Cosine between positive pairs
             positive_logit = torch.sum(query * positive_key, dim=1, keepdim=True)
 
-            if negative_mode == 'unpaired':
+            if negative_mode == "unpaired":
                 # Cosine between all query-negative combinations
                 negative_logits = query @ self.transpose(negative_keys)
 
-            elif negative_mode == 'paired':
+            elif negative_mode == "paired":
                 query = query.unsqueeze(1)
                 negative_logits = query @ self.transpose(negative_keys)
                 negative_logits = negative_logits.squeeze(1)
@@ -677,6 +734,7 @@ class CorrelationCoefficientLoss(nn.Module):
     Notice: output range is [0, 1]
             The closer to 0 indicates the higher pearson correlation coefficient.
     """
+
     def __init__(self, conf):
         super().__init__()
         self.cos = nn.CosineSimilarity(dim=1, eps=1e-6)
@@ -686,7 +744,9 @@ class CorrelationCoefficientLoss(nn.Module):
         x = x.view(batch_size, -1)
         y = y.view(batch_size, -1)
 
-        pearson = self.cos(x - x.mean(dim=1, keepdim=True), y - y.mean(dim=1, keepdim=True))
+        pearson = self.cos(
+            x - x.mean(dim=1, keepdim=True), y - y.mean(dim=1, keepdim=True)
+        )
 
         return -((pearson.mean() - 1) / 2)
 
@@ -696,6 +756,7 @@ class MSECorrelationCoefficientLoss(nn.Module):
     Notice: output range is [0, 1]
             The closer to 0 indicates the higher pearson correlation coefficient.
     """
+
     def __init__(self, conf):
         super().__init__()
         self.mse = MSELoss()
@@ -711,7 +772,7 @@ class MSECorrelationCoefficientLoss(nn.Module):
 class TanHLoss(nn.Module):
     def __init__(self, conf):
         super().__init__()
-        self.temperature = conf['temperature']
+        self.temperature = conf["temperature"]
 
     def forward(self, x, y):
 
@@ -721,15 +782,19 @@ class TanHLoss(nn.Module):
 class LabelSmoothingCrossEntropyLoss(nn.Module):
     def __init__(self, conf):
         super().__init__()
-        self.epsilon = conf['epsilon']
-        self.reduction = conf['reduction']
+        self.epsilon = conf["epsilon"]
+        self.reduction = conf["reduction"]
         self.loss = nn.CrossEntropyLoss()
 
     def linear_combination(self, x, y):
         return self.epsilon * x + (1 - self.epsilon) * y
 
     def reduce_loss(self, loss):
-        return loss.mean() if self.reduction == 'mean' else loss.sum() if self.reduction == 'sum' else loss
+        return (
+            loss.mean()
+            if self.reduction == "mean"
+            else loss.sum() if self.reduction == "sum" else loss
+        )
 
     def forward(self, preds, target):
         n = preds.size()[-1]
@@ -743,10 +808,10 @@ class LabelSmoothingCrossEntropyLoss(nn.Module):
 # https://github.com/ZhenglinZhou/STAR/tree/master/lib/loss
 class WingLoss(nn.Module):
     def __init__(self, conf):
-        super(  ).__init__()
+        super().__init__()
         # omega=0.1, epsilon=2
-        self.omega = conf['omega']
-        self.epsilon = conf['epsilon']
+        self.omega = conf["omega"]
+        self.epsilon = conf["epsilon"]
 
     def forward(self, pred, target):
         y = target
@@ -757,7 +822,7 @@ class WingLoss(nn.Module):
         loss = torch.where(
             delta < self.omega,
             self.omega * torch.log(1 + delta / self.epsilon),
-            delta - C
+            delta - C,
         )
         return loss.mean()
 
@@ -766,16 +831,18 @@ class WingLoss(nn.Module):
 class SmoothL1Loss(nn.Module):
     def __init__(self, conf):
         super(SmoothL1Loss, self).__init__()
-        self.scale = conf['scale']
+        self.scale = conf["scale"]
         self.EPSILON = 1e-10
 
     def __repr__(self):
         return "SmoothL1Loss()"
 
-    def forward(self, output: torch.Tensor, groundtruth: torch.Tensor, reduction='mean'):
+    def forward(
+        self, output: torch.Tensor, groundtruth: torch.Tensor, reduction="mean"
+    ):
         """
-            input:  b x n x 2
-            output: b x n x 1 => 1
+        input:  b x n x 2
+        output: b x n x 1 => 1
         """
         if output.dim() == 4:
             shape = output.shape
@@ -784,14 +851,15 @@ class SmoothL1Loss(nn.Module):
         delta_2 = (output - groundtruth).pow(2).sum(dim=-1, keepdim=False)
         delta = delta_2.clamp(min=1e-6).sqrt()
         # delta = torch.sqrt(delta_2 + self.EPSILON)
-        loss = torch.where( \
-            delta_2 < self.scale * self.scale, \
-            0.5 / self.scale * delta_2, \
-            delta - 0.5 * self.scale)
+        loss = torch.where(
+            delta_2 < self.scale * self.scale,
+            0.5 / self.scale * delta_2,
+            delta - 0.5 * self.scale,
+        )
 
-        if reduction == 'mean':
+        if reduction == "mean":
             loss = loss.mean()
-        elif reduction == 'sum':
+        elif reduction == "sum":
             loss = loss.sum()
 
         return loss

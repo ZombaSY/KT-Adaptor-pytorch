@@ -1,13 +1,12 @@
-import torch
 import math
-import sys
 
-from torch import nn
+import torch
 from einops import rearrange, repeat
+from torch import nn
 
 
 class FeedForward(nn.Module):
-    def __init__(self, dim, hidden_dim, dropout=0.):
+    def __init__(self, dim, hidden_dim, dropout=0.0):
         super().__init__()
         self.net = nn.Sequential(
             nn.LayerNorm(dim),
@@ -15,16 +14,17 @@ class FeedForward(nn.Module):
             nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, dim),
-            nn.Dropout(dropout))
+            nn.Dropout(dropout),
+        )
 
     def forward(self, x):
         return self.net(x)
 
 
 class MHSA(nn.Module):
-    def __init__(self, dims, num_heads=8, dropout=0.):
+    def __init__(self, dims, num_heads=8, dropout=0.0):
         super().__init__()
-        assert dims % num_heads == 0, 'dim must be divided into heads'
+        assert dims % num_heads == 0, "dim must be divided into heads"
 
         self.num_heads = num_heads
         self.scale = (dims // num_heads) ** -0.5
@@ -34,14 +34,16 @@ class MHSA(nn.Module):
         self.attend = nn.Softmax(dim=-1)
         self.dropout = nn.Dropout(dropout)
 
-        self.to_qkv = nn.Linear(dims, dims * 3, bias = False)
+        self.to_qkv = nn.Linear(dims, dims * 3, bias=False)
         self.to_out = nn.Identity()
 
     def forward(self, x):
         x = self.norm(x)
 
-        qkv = self.to_qkv(x).chunk(3, dim = -1)
-        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.num_heads), qkv)
+        qkv = self.to_qkv(x).chunk(3, dim=-1)
+        q, k, v = map(
+            lambda t: rearrange(t, "b n (h d) -> b h n d", h=self.num_heads), qkv
+        )
 
         dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
 
@@ -49,7 +51,7 @@ class MHSA(nn.Module):
         attn = self.dropout(attn)
 
         out = torch.matmul(attn, v)
-        out = rearrange(out, 'b h n d -> b n (h d)')
+        out = rearrange(out, "b h n d -> b n (h d)")
 
         return self.to_out(out)
 
@@ -57,7 +59,7 @@ class MHSA(nn.Module):
 class MHCA(nn.Module):
     def __init__(self, query_dims, context_dims, out_dims, num_heads=8, dropout=0.1):
         super().__init__()
-        assert out_dims % num_heads == 0, 'dim must be divided into heads'
+        assert out_dims % num_heads == 0, "dim must be divided into heads"
 
         self.num_heads = num_heads
         self.scale = (out_dims // num_heads) ** -0.5
@@ -86,9 +88,9 @@ class MHCA(nn.Module):
         v = self.to_v(context)
 
         # Rearrange to multiple heads
-        q = rearrange(q, 'b n (h d) -> b h n d', h=self.num_heads)
-        k = rearrange(k, 'b n (h d) -> b h n d', h=self.num_heads)
-        v = rearrange(v, 'b n (h d) -> b h n d', h=self.num_heads)
+        q = rearrange(q, "b n (h d) -> b h n d", h=self.num_heads)
+        k = rearrange(k, "b n (h d) -> b h n d", h=self.num_heads)
+        v = rearrange(v, "b n (h d) -> b h n d", h=self.num_heads)
 
         # Compute attention scores
         attn = torch.matmul(q, k.transpose(-2, -1)) * self.scale
@@ -96,7 +98,7 @@ class MHCA(nn.Module):
         attn = self.dropout(attn)  # Add dropout to attention weights
 
         out = torch.matmul(attn, v)
-        out = rearrange(out, 'b h n d -> b n (h d)')
+        out = rearrange(out, "b h n d -> b n (h d)")
 
         # Apply output projection
         return self.to_out(out)
@@ -108,10 +110,14 @@ class Transformer(nn.Module):
         self.norm = nn.LayerNorm(dim)
         self.layers = nn.ModuleList([])
         for _ in range(depth):
-            self.layers.append(nn.ModuleList([
-                MHSA(dims=dim, num_heads=heads, dropout=dropout),
-                FeedForward(dim, dim, dropout=dropout)
-                ]))
+            self.layers.append(
+                nn.ModuleList(
+                    [
+                        MHSA(dims=dim, num_heads=heads, dropout=dropout),
+                        FeedForward(dim, dim, dropout=dropout),
+                    ]
+                )
+            )
 
     def forward(self, x):
         for attn, ff in self.layers:
@@ -130,27 +136,33 @@ class KTAdaptor(nn.Module):
 
         pe = torch.zeros(n_tasks, in_dims)
         position = torch.arange(0, n_tasks, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, 1, 2).float() * (-math.log(10000.0) / in_dims))
+        div_term = torch.exp(
+            torch.arange(0, 1, 2).float() * (-math.log(10000.0) / in_dims)
+        )
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
 
-        self.register_buffer('pe', pe)
-        self.register_buffer('sw', torch.tensor([True]))
+        self.register_buffer("pe", pe)
+        self.register_buffer("sw", torch.tensor([True]))
 
-        self.mlp = nn.Linear(in_dims, target_dim) if in_dims > target_dim else nn.Identity()
+        self.mlp = (
+            nn.Linear(in_dims, target_dim) if in_dims > target_dim else nn.Identity()
+        )
 
     def forward(self, tokens, control_vec):
-        '''
+        """
         tokens.shape = [b, N, 1024]
         control_vec = [False, False, True, ..., False]
                        -> "True" remains the selected task
                        -> control_vec.shape = N
-        '''
+        """
         b_size = tokens.shape[0]
-        facial_token = repeat(self.knowledge_token, 'd -> b c d', b=b_size, c=1).contiguous()
+        facial_token = repeat(
+            self.knowledge_token, "d -> b c d", b=b_size, c=1
+        ).contiguous()
 
         tokens = torch.cat([facial_token, tokens], dim=1)
-        tokens = tokens + self.pe[:self.n_tasks + 1]
+        tokens = tokens + self.pe[: self.n_tasks + 1]
         tokens = self.transformer(tokens)
 
         control_vec = torch.cat([self.sw, control_vec])
@@ -159,18 +171,20 @@ class KTAdaptor(nn.Module):
         return self.mlp(tokens).mean(dim=1), torch.tensor(0).to(tokens.device)
 
     def forward_inference(self, token, control_vec):
-        '''
+        """
         token.shape = [b, 1, 1024]
         control_vec = [False, False, True, ..., False]
                        -> "True" remains the selected task
-        '''
+        """
 
         b_size = token.shape[0]
-        facial_token = repeat(self.knowledge_token, 'd -> b c d', b=b_size, c=1).contiguous()
+        facial_token = repeat(
+            self.knowledge_token, "d -> b c d", b=b_size, c=1
+        ).contiguous()
 
         tokens = torch.cat([facial_token, token], dim=1)
         control_vec = torch.cat([self.sw, control_vec])
-        tokens = tokens + self.pe[:self.n_tasks + 1][control_vec]
+        tokens = tokens + self.pe[: self.n_tasks + 1][control_vec]
         tokens = self.transformer(tokens)
 
         return self.mlp(tokens).mean(dim=1)

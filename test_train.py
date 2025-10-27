@@ -1,25 +1,25 @@
-import os
-import torch
-import random
-import numpy as np
-import cv2
 import importlib
 import logging
+import os
+import random
 
+import cv2
+import numpy as np
+import torch
 from accelerate import Accelerator
-from models import lr_scheduler
-from tools.trainer_base import TrainerBase
-from models import utils
 from thop import profile
 
-os.environ["CUDA_VISIBLE_DEVICES"] = '0'
+from models import lr_scheduler, utils
+from tools.trainer_base import TrainerBase
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 os.environ["NCCL_P2P_DISABLE"] = "1"
 os.environ["NCCL_IB_DISABLE"] = "1"
 
 
 class ModelMini:
     def __init__(self):
-        self.device = 'cuda'
+        self.device = "cuda"
         self.accelerator = Accelerator()
 
         self.x = torch.rand([8, 3, 224, 224]).to(self.device)
@@ -28,28 +28,37 @@ class ModelMini:
         self.x_add.requires_grad = False
 
         # select model configuraiton and load from configs for test
-        spec = importlib.util.spec_from_file_location("conf", 'configs/train_knowledge_token.py')
+        spec = importlib.util.spec_from_file_location(
+            "conf", "configs/train_knowledge_token.py"
+        )
         imported_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(imported_module)
         self.conf = imported_module.conf
-        utils.Logger('log.txt', level=logging.DEBUG if self.conf['env']['debug'] else logging.INFO)
+        utils.Logger(
+            "log.txt",
+            level=logging.DEBUG if self.conf["env"]["debug"] else logging.INFO,
+        )
 
-        self.model = TrainerBase.init_model(self.conf , self.device)
+        self.model = TrainerBase.init_model(self.conf, self.device)
         self.model.to(self.device)
-        self.criterion = TrainerBase.init_criterion(self.conf['criterion'], self.device)
-        self.optimizer = TrainerBase.init_optimizer(self.conf['optimizer'], self.model)
+        self.criterion = TrainerBase.init_criterion(self.conf["criterion"], self.device)
+        self.optimizer = TrainerBase.init_optimizer(self.conf["optimizer"], self.model)
 
         self.epochs = 2
         self.steps = 5
         self.t_max = 20
         self.cycles = self.epochs / self.t_max
-        self.scheduler = lr_scheduler.WarmupCosineSchedule(optimizer=self.optimizer,
-                                                           warmup_steps=self.steps * 20,
-                                                           t_total=self.epochs * self.steps,
-                                                           cycles=self.cycles,
-                                                           last_epoch=-1)
+        self.scheduler = lr_scheduler.WarmupCosineSchedule(
+            optimizer=self.optimizer,
+            warmup_steps=self.steps * 20,
+            t_total=self.epochs * self.steps,
+            cycles=self.cycles,
+            last_epoch=-1,
+        )
 
-        self.model, self.optimizer = self.accelerator.prepare(self.model, self.optimizer)
+        self.model, self.optimizer = self.accelerator.prepare(
+            self.model, self.optimizer
+        )
 
         # torch.save(self.model.module.filter_state_dict(), 'model.pt')
         # self.train_mini()
@@ -64,14 +73,18 @@ class ModelMini:
         img = cv2.resize(img, (512, 512))
         img = (img - 0.5) / 0.25
 
-        return torch.from_numpy(img).permute(2, 0, 1).unsqueeze(0).float().to(self.device)
+        return (
+            torch.from_numpy(img).permute(2, 0, 1).unsqueeze(0).float().to(self.device)
+        )
 
     def train_mini(self):
         self.model.train()
         for epoch in range(self.epochs):
             for step in range(self.steps):
                 out = self.model(self.x)
-                key = list(filter(lambda x: True if 'result_' in x else False, out.keys()))[0]
+                key = list(
+                    filter(lambda x: True if "result_" in x else False, out.keys())
+                )[0]
                 loss = self.criterion(out[key], self.y)
                 self.accelerator.backward(loss)
                 self.optimizer.zero_grad()
@@ -82,11 +95,13 @@ class ModelMini:
     def inference(self):
         self.model.eval()
         with torch.no_grad():
-            out = self.model(self.x)
+            self.model(self.x)
 
     def measure_inference_time(self):
         # measure inference time
-        starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+        starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(
+            enable_timing=True
+        )
         timings = np.zeros((self.steps - 1, 1))
         self.model.eval()
         with torch.no_grad():
@@ -99,7 +114,7 @@ class ModelMini:
                     curr_time = starter.elapsed_time(ender)
                     timings[step - 1] = curr_time
         mean_syn = np.sum(timings) / (self.steps - 1)
-        print(f'{mean_syn}ms')
+        print(f"{mean_syn}ms")
 
     def measure_computations(self):
         self.model.eval()
@@ -112,13 +127,13 @@ class ModelMini:
     def measure_memory_consumption(self):
         self.model.eval()
         with torch.no_grad():
-            print('Max Memory Allocated: ', torch.cuda.max_memory_allocated())
+            print("Max Memory Allocated: ", torch.cuda.max_memory_allocated())
 
     def save_jit(self):
         with torch.no_grad():
             self.model.eval()
             m = torch.jit.script(self.model)
-            torch.jit.save(m, 'model.torchscript')
+            torch.jit.save(m, "model.torchscript")
 
 
 def main():
@@ -132,5 +147,5 @@ def main():
     ModelMini()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

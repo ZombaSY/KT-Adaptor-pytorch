@@ -1,7 +1,7 @@
 # Description
 This is official repository of the paper [TDB](https://arxiv.org/abs/2501.18921)
 
-Learning framework is motivated by [here](https://github.com/ZombaSY/pytorch_starter-kit). Visit for your own framework custimization 😁
+Learning framework is motivated by [here](https://github.com/ZombaSY/pytorch_starter-kit). Visit for your own framework custumization 😁
 
 ## Environment
 
@@ -12,7 +12,6 @@ Learning framework is motivated by [here](https://github.com/ZombaSY/pytorch_sta
 - Pytorch 2.4.1
 
 ## ✅ Experimental Result
-
 TDB
 
 
@@ -27,7 +26,6 @@ TDB
 ## 🚄 Train
 TDB
 
----
 
 ## 🛴 Inference
 TDB
