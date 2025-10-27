@@ -1,0 +1,88 @@
+input_size=[224, 224]   # (height, width)
+crop_size=224
+
+conf=dict(
+    env=dict(
+        debug=False,
+        CUDA_VISIBLE_DEVICES='2',
+        mode='train',
+        cuda=True,
+        wandb=True,
+        saved_model_directory='model_ckpt',
+        project_name='facial-token',
+        task='regression',
+        train_fold=1,
+        epoch=10000,
+        early_stop_epoch=500,
+    ),
+
+    model=dict(
+        name='Mobileone_s0_age_estimation',
+        num_class=1,
+        input_size=input_size,
+        saved_ckpt='pretrained/ImageNet/mobileone_s0_unfused.pth.tar',
+    ),
+
+    dataloader_train=dict(
+        name='Image2Vector',
+        mode='train',
+        data_path='/path/to/UTK-face/train.csv',
+        data_cache=True,
+        label_cols=['label'],
+        weighted_sampler=False,
+        batch_size=32,
+        input_size=input_size,
+        workers=8,
+
+        augmentations=dict(
+            transform_blur=0.5,
+            transform_clahe=0.5,
+            transform_cutmix=0.0,
+            transform_mixup=0.3,
+            transform_coarse_dropout=0.5,   # available albumentations >= 1.4.17
+            transform_fancyPCA=0.5,
+            transform_fog=0.3,
+            transform_g_noise=0.5,
+            transform_jitter=0.5,
+            transform_hflip=0.5,
+            transform_vflip=0.0,
+            transform_jpeg=0.5,
+            transform_perspective=0.2,
+            transform_rand_resize=0.0,
+            transform_rand_crop=crop_size,
+            transform_resize=input_size,
+            transform_rain=0.3,
+            transform_rotate=0.2,
+        )
+    ),
+    dataloader_valid=dict(
+        name='Image2Vector',
+        mode='valid',
+        data_path='/path/to/UTK-face/valid.csv',
+        data_cache=True,
+        label_cols=['label'],
+        weighted_sampler=False,
+        batch_size=32,
+        input_size=input_size,
+        workers=8,
+    ),
+
+    criterion=dict(
+        name='WingLoss',
+        omega=0.1,
+        epsilon=2
+    ),
+
+    optimizer=dict(
+        name='AdamW',
+        lr=1e-4,
+        lr_min=1e-6,
+        weight_decay=0.005,
+    ),
+
+    scheduler=dict(
+        name='WarmupCosine',
+        cycles=20,  # unit: epoch
+        warmup_epoch=10
+    ),
+)
